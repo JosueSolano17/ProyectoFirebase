@@ -1,79 +1,138 @@
-const {onValueCreated} = require("firebase-functions/database");
-const {initializeApp} = require("firebase-admin/app");
-const {getDatabase} = require("firebase-admin/database");
-const {getMessaging} = require("firebase-admin/messaging");
-const {logger} = require("firebase-functions");
+const { onValueCreated } = require("firebase-functions/v2/database");
+const logger = require("firebase-functions/logger");
+
+const { initializeApp } = require("firebase-admin/app");
+const { getDatabase } = require("firebase-admin/database");
+const { getMessaging } = require("firebase-admin/messaging");
 
 initializeApp();
 
 exports.notificarNuevoMensaje = onValueCreated(
-    "/chats/general/{messageId}",
-    async (event) => {
-      const mensaje = event.data.val();
+  {
+    ref: "/chats/general/{messageId}",
+    instance: "chat2-13ee2-default-rtdb",
+    region: "us-central1",
+  },
+  async (event) => {
+    const mensaje = event.data.val();
 
-      if (!mensaje) {
-        logger.warn("El mensaje está vacío");
-        return null;
-      }
-
-      const texto = mensaje.texto || "Tienes un mensaje nuevo";
-      const autor = mensaje.autor || "Chat";
-      const autorId = mensaje.autorId || "";
-
-      const tokensSnapshot = await getDatabase()
-          .ref("tokens")
-          .get();
-
-      if (!tokensSnapshot.exists()) {
-        logger.info("No existen dispositivos registrados");
-        return null;
-      }
-
-      const dispositivos = tokensSnapshot.val();
-
-      const tokensDestinatarios = Object.entries(dispositivos)
-          .filter(([uid]) => uid !== autorId)
-          .map(([, datos]) => datos.token)
-          .filter((token) =>
-            typeof token === "string" && token.length > 0,
-          );
-
-      if (tokensDestinatarios.length === 0) {
-        logger.info("No existen destinatarios");
-        return null;
-      }
-
-      const respuesta = await getMessaging()
-          .sendEachForMulticast({
-            tokens: tokensDestinatarios,
-
-            notification: {
-              title: autor,
-              body: texto,
-            },
-
-            data: {
-              chatId: "general",
-              messageId: event.params.messageId,
-            },
-
-            android: {
-              priority: "high",
-              notification: {
-                channelId: "chat_messages",
-                sound: "default",
-              },
-            },
-          });
-
-      logger.info(
-          `Notificaciones correctas: ${respuesta.successCount}`,
-      );
-
-      logger.info(
-          `Notificaciones fallidas: ${respuesta.failureCount}`,
-      );
-
+    if (!mensaje) {
+      logger.warn("El mensaje está vacío.");
       return null;
-    },
+    }
+
+    const texto = String(mensaje.texto || "").trim();
+    const autor = String(mensaje.autor || "Usuario");
+    const autorId = String(mensaje.autorId || "");
+
+    if (!texto || !autorId) {
+      logger.warn("El mensaje no contiene texto o autorId.", mensaje);
+      return null;
+    }
+
+    const database = getDatabase();
+    const tokensSnapshot = await database.ref("tokens").get();
+
+    if (!tokensSnapshot.exists()) {
+      logger.info("No existen tokens registrados.");
+      return null;
+    }
+
+    const destinatarios = [];
+
+    tokensSnapshot.forEach((usuarioSnapshot) => {
+      const uid = usuarioSnapshot.key;
+
+      // No notificar al dispositivo que envió el mensaje.
+      if (uid === autorId) {
+        return;
+      }
+
+      const valor = usuarioSnapshot.val();
+
+      // Compatible con token guardado como objeto o texto.
+      const token =
+        typeof valor === "string" ? valor : valor?.token;
+
+      if (token) {
+        destinatarios.push({
+          uid,
+          token,
+        });
+      }
+    });
+
+    if (destinatarios.length === 0) {
+      logger.info("No existen destinatarios para el mensaje.");
+      return null;
+    }
+
+    const respuesta = await getMessaging().sendEachForMulticast({
+      tokens: destinatarios.map((item) => item.token),
+
+      notification: {
+        title: autor,
+        body: texto,
+      },
+
+      data: {
+        type: "chat",
+        chatId: "general",
+        messageId: event.params.messageId,
+      },
+
+      android: {
+        priority: "high",
+        notification: {
+          channelId: "chat_messages",
+          sound: "default",
+        },
+      },
+
+      apns: {
+        payload: {
+          aps: {
+            sound: "default",
+          },
+        },
+      },
+    });
+
+    logger.info(
+      `Notificaciones correctas: ${respuesta.successCount}`,
+    );
+
+    logger.info(
+      `Notificaciones fallidas: ${respuesta.failureCount}`,
+    );
+
+    // Eliminar tokens inválidos.
+    const actualizaciones = {};
+
+    respuesta.responses.forEach((resultado, index) => {
+      if (resultado.success) {
+        return;
+      }
+
+      const errorCode = resultado.error?.code;
+      const destinatario = destinatarios[index];
+
+      logger.error(
+        `Error enviando a ${destinatario.uid}: ${errorCode}`,
+      );
+
+      if (
+        errorCode === "messaging/registration-token-not-registered" ||
+        errorCode === "messaging/invalid-registration-token"
+      ) {
+        actualizaciones[destinatario.uid] = null;
+      }
+    });
+
+    if (Object.keys(actualizaciones).length > 0) {
+      await database.ref("tokens").update(actualizaciones);
+    }
+
+    return null;
+  },
 );

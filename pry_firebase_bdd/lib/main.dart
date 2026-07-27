@@ -10,9 +10,7 @@ import 'presentation/views/chat_view.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Autentica cada dispositivo con un UID diferente.
   if (FirebaseAuth.instance.currentUser == null) {
@@ -26,11 +24,7 @@ Future<void> main() async {
     sound: true,
   );
 
-  runApp(
-    const ProviderScope(
-      child: MyApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends StatelessWidget {

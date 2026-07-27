@@ -4,101 +4,157 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class NotificationService {
-  static final FirebaseMessaging _messaging =
-      FirebaseMessaging.instance;
+  NotificationService._();
 
-  static final FlutterLocalNotificationsPlugin _localNotifications =
+  static final NotificationService instance = NotificationService._();
+
+  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+
+  final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
-  static const AndroidNotificationChannel _channel =
-      AndroidNotificationChannel(
+  static const AndroidNotificationChannel _channel = AndroidNotificationChannel(
     'chat_messages',
     'Mensajes del chat',
-    description: 'Notificaciones de mensajes nuevos',
-    importance: Importance.max,
+    description: 'Notificaciones de nuevos mensajes del chat',
+    importance: Importance.high,
   );
 
-  static Future<void> initialize() async {
-    await _messaging.requestPermission(
+  Future<void> inicializar() async {
+    await _solicitarPermisos();
+    await _configurarNotificacionesLocales();
+    await _configurarMensajes();
+  }
+
+  Future<void> _solicitarPermisos() async {
+    final settings = await _messaging.requestPermission(
       alert: true,
       badge: true,
       sound: true,
+      provisional: false,
     );
 
+    print(
+      'Permiso de notificaciones: '
+      '${settings.authorizationStatus}',
+    );
+  }
+
+  Future<void> _configurarNotificacionesLocales() async {
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
+
+    const iosSettings = DarwinInitializationSettings();
+
     const initializationSettings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      android: androidSettings,
+      iOS: iosSettings,
     );
 
     await _localNotifications.initialize(
       settings: initializationSettings,
+      onDidReceiveNotificationResponse: (response) {
+        print('Notificación pulsada: ${response.payload}');
+      },
     );
 
     final androidPlugin = _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+          AndroidFlutterLocalNotificationsPlugin
+        >();
 
     await androidPlugin?.createNotificationChannel(_channel);
+  }
 
-    await _guardarToken();
-
-    _messaging.onTokenRefresh.listen((token) async {
-      await _guardarTokenEspecifico(token);
-    });
-
+  Future<void> _configurarMensajes() async {
+    // Para mostrar notificaciones mientras la aplicación está abierta.
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-      await mostrarNotificacion(message);
+      await _mostrarNotificacion(message);
     });
+
+    // Se ejecuta cuando el usuario abre una notificación.
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      print('Notificación abierta: ${message.data}');
+    });
+
+    // Configuración para iOS.
+    await _messaging.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
   }
 
-  static Future<void> _guardarToken() async {
-    final token = await _messaging.getToken();
+  Future<void> guardarTokenDelUsuario() async {
+    final user = FirebaseAuth.instance.currentUser;
 
-    if (token != null) {
-      await _guardarTokenEspecifico(token);
-    }
-  }
-
-  static Future<void> _guardarTokenEspecifico(String token) async {
-    final usuario = FirebaseAuth.instance.currentUser;
-
-    if (usuario == null) {
+    if (user == null) {
+      print('No se guardó el token porque no existe usuario autenticado.');
       return;
     }
 
-    await FirebaseDatabase.instance
-        .ref('tokens/${usuario.uid}')
-        .set({
+    final token = await _messaging.getToken();
+
+    if (token == null) {
+      print('Firebase Messaging no generó un token.');
+      return;
+    }
+
+    await FirebaseDatabase.instance.ref('tokens/${user.uid}').set({
       'token': token,
-      'actualizadoEn': ServerValue.timestamp,
+      'updatedAt': ServerValue.timestamp,
     });
 
-    print('Token FCM guardado: $token');
+    print('Token FCM guardado para ${user.uid}');
+    print(token);
+
+    // Actualizar el token cuando Firebase lo cambie.
+    _messaging.onTokenRefresh.listen((nuevoToken) async {
+      final currentUser = FirebaseAuth.instance.currentUser;
+
+      if (currentUser == null) {
+        return;
+      }
+
+      await FirebaseDatabase.instance.ref('tokens/${currentUser.uid}').set({
+        'token': nuevoToken,
+        'updatedAt': ServerValue.timestamp,
+      });
+
+      print('Token FCM actualizado.');
+    });
   }
 
-  static Future<void> mostrarNotificacion(
-    RemoteMessage message,
-  ) async {
+  Future<void> _mostrarNotificacion(RemoteMessage message) async {
     final notification = message.notification;
 
     if (notification == null) {
       return;
     }
 
-    await _localNotifications.show(
-      id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-      title: notification.title ?? 'Nuevo mensaje',
-      body: notification.body ?? 'Tienes un mensaje nuevo',
-      notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'chat_messages',
-          'Mensajes del chat',
-          channelDescription: 'Notificaciones de mensajes nuevos',
-          importance: Importance.max,
-          priority: Priority.high,
-          playSound: true,
-        ),
+    final notificationDetails = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channel.id,
+        _channel.name,
+        channelDescription: _channel.description,
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
       ),
-      payload: 'chat_general',
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+    );
+
+    await _localNotifications.show(
+      id: notification.hashCode,
+      title: notification.title ?? 'Nuevo mensaje',
+      body: notification.body ?? '',
+      notificationDetails: notificationDetails,
+      payload: message.data['chatId'],
     );
   }
 }

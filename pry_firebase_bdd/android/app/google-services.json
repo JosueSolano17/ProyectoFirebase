@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "76053714351",
+    "firebase_url": "https://chat2-13ee2-default-rtdb.firebaseio.com",
+    "project_id": "chat2-13ee2",
+    "storage_bucket": "chat2-13ee2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:76053714351:android:d7f4be2c618e0958594b5a",
+        "android_client_info": {
+          "package_name": "com.example.chat2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBMgnUyxz_dUGC5kh7bQnf20qgjGOGZNAI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:76053714351:android:b63cfd69a3420b2c594b5a",
+        "android_client_info": {
+          "package_name": "com.example.pry_firebase_bdd"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBMgnUyxz_dUGC5kh7bQnf20qgjGOGZNAI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

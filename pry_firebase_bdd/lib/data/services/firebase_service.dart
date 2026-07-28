@@ -2,20 +2,40 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 
 import '../../domain/models/mensaje.dart';
+import '../../domain/models/usuario.dart';
 
 class FirebaseService {
   final FirebaseAuth _auth;
-  final DatabaseReference mensajesRef;
+  final FirebaseDatabase _database;
 
   FirebaseService({
     FirebaseAuth? auth,
     FirebaseDatabase? database,
   })  : _auth = auth ?? FirebaseAuth.instance,
-        mensajesRef = (database ?? FirebaseDatabase.instance)
-            .ref('chats/general');
+        _database = database ?? FirebaseDatabase.instance;
 
-  Stream<List<Mensaje>> recibirMensajes() {
-    return mensajesRef.onValue.map((event) {
+  Stream<List<Usuario>> obtenerUsuarios() {
+    return _database.ref('usuarios').onValue.map((event) {
+      final data = event.snapshot.value;
+      if (data == null || data is! Map) return [];
+
+      final usuarios = <Usuario>[];
+      final currentUid = _auth.currentUser?.uid;
+
+      for (final value in data.values) {
+        if (value is Map) {
+          final usuario = Usuario.fromJson(value);
+          if (usuario.uid != currentUid) {
+            usuarios.add(usuario);
+          }
+        }
+      }
+      return usuarios;
+    });
+  }
+
+  Stream<List<Mensaje>> recibirMensajes(String chatId) {
+    return _database.ref('chats/$chatId').onValue.map((event) {
       final data = event.snapshot.value;
 
       if (data == null || data is! Map) {
@@ -43,6 +63,7 @@ class FirebaseService {
   }
 
   Future<void> enviarMensaje({
+    required String chatId,
     required String texto,
     required String autor,
   }) async {
@@ -66,7 +87,7 @@ class FirebaseService {
       timestamp: DateTime.now().millisecondsSinceEpoch,
     );
 
-    await mensajesRef.push().set(
+    await _database.ref('chats/$chatId').push().set(
       mensaje.toJson(),
     );
   }

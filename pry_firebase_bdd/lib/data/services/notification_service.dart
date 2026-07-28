@@ -42,7 +42,7 @@ class NotificationService {
 
   Future<void> _configurarNotificacionesLocales() async {
     const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
+      '@drawable/ic_notification',
     );
 
     const iosSettings = DarwinInitializationSettings();
@@ -140,7 +140,7 @@ class NotificationService {
         channelDescription: _channel.description,
         importance: Importance.high,
         priority: Priority.high,
-        icon: '@mipmap/ic_launcher',
+        icon: '@drawable/ic_notification',
       ),
       iOS: const DarwinNotificationDetails(
         presentAlert: true,

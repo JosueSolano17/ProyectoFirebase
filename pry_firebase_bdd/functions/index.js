@@ -9,7 +9,7 @@ initializeApp();
 
 exports.notificarNuevoMensaje = onValueCreated(
   {
-    ref: "/chats/general/{messageId}",
+    ref: "/chats/{chatId}/{messageId}",
     instance: "chat2-13ee2-default-rtdb",
     region: "us-central1",
   },
@@ -77,7 +77,7 @@ exports.notificarNuevoMensaje = onValueCreated(
 
       data: {
         type: "chat",
-        chatId: "general",
+        chatId: event.params.chatId,
         messageId: event.params.messageId,
       },
 
